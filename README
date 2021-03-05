@@ -1,0 +1,12 @@
+Main requirements: qiskit, tkinter
+The tkinter library is most likely already installed with python.
+
+Terminal command to run: python q6nimmt.py
+
+Currently only can host on localhost, so to connect to the hosted
+session, enter 127.0.0.1 for the IP. Host session does not need
+to input IP.
+
+Only host can start the game.
+
+The confirm button is used to send discards.
