@@ -178,13 +178,12 @@ class GameViewClient:
                         self.ops.enableMqops()
                     self.pid = pid
                     self.board.updateBoard(board)
-                    self.players.updatePlayerInfo(players, self.pid)
+                    self.scoreboard.updatePlayerInfo(players, self.pid)
                     self.hand.displayNewHand(hand)
                     self.confirmButton.config(state="normal")
 
-
                 elif PLAYERS in message:
-                    self.scoreboard.updatePlayerInfo(unpackPlayers(message[PLAYERS]))
+                    self.scoreboard.updatePlayerInfo(unpackPlayers(message[PLAYERS]), self.pid)
 
                 elif GAME_OVER in message:
                     break
@@ -211,4 +210,3 @@ def gameClientTest():
 
 if __name__ == '__main__':
     gameClientTest()
-

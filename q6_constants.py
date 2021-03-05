@@ -30,5 +30,6 @@ GAME_OVER = "GAME_OVER" # returns clients back to lobby
 # game parameters
 HANDSIZE = 10
 SHOTS = 10
-MAX_QUBITS = 29
-STARTING_MQOPS = 2 # number of multi-qubit operations each player can make
+STARTING_SCORE = 30
+MAX_QUBITS = 20 # 29 too high...
+STARTING_MQOPS = 1 # number of multi-qubit operations each player can make

@@ -109,7 +109,7 @@ class Pile(object):
 
 
 class Player(object):
-    def __init__(self, id, name, score=66, mqops=STARTING_MQOPS):
+    def __init__(self, id, name, score=STARTING_SCORE, mqops=STARTING_MQOPS):
         self.id = id
         self.name = name
         self.score = score
@@ -146,7 +146,7 @@ class Game(object):
             self.hands[p] = Pile(list=hand)
             self.hands[p].sort()
             # reset mqops each round
-            self.players[p].mqops = 3
+            self.players[p].mqops = STARTING_MQOPS
         self.board = [Pile(i, list=[deck.draw(),]) for i in range(4)]
         self.nextQubitId = 4
         self.takenRows = [[] for _ in range(len(self.players))]
@@ -271,15 +271,22 @@ class Game(object):
     # qbitCounts contain percentage of |1> measurements (out of 10 shots)
     def calculateScore(self, qbitCounts):
 
+        num_OtherPlayers = len(self.players) - 1
+
+        num_OtherPlayers = num_OtherPlayers if num_OtherPlayers > 0 else 1
+
+        dampeningFactor = 1.0 / num_OtherPlayers
+
         for pid, playerRows in enumerate(self.takenRows):
             for qubitId, score in playerRows:
 
                 # penalize player for |0> measurement
                 self.players[pid].score -= (1 - qbitCounts[qubitId]) * score
 
-                # subtract from other players for |1> measurement
+                # subtract from other players for |1> measurement, with penalty
+                # divided by the number of other players
                 for otherPlayer in self.players[:pid] + self.players[pid+1:]:
-                    otherPlayer.score -= qbitCounts[qubitId] * score
+                    otherPlayer.score -= qbitCounts[qubitId] * score * dampeningFactor
 
     # keep track of the number of rows taken, qasm_simulator has 29 qubit limit
     def rowsRemaining(self):

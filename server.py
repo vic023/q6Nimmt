@@ -154,6 +154,7 @@ class Server:
                 ###################################################
             except OSError:
                 print("Game created.")
+                break
             except:
                 print("An unexpected error ocurred.")
                 break
@@ -319,9 +320,9 @@ class Server:
 
                     # broadcast row replacements in log
                     if bool(takenPiles):
-                        self.log_update(f"{self.playerNames[pid]} has taking the" +
+                        self.log_update(f"{self.playerNames[pid]} is taking the" +
                                 " following rows with the following scores" +
-                                f"{[(self.ind_to_pos(row_ind), qubitId, score) for row_ind, qubitId, score in takenPiles]}")
+                                f"{[(self.ind_to_pos(row_ind), score) for row_ind, _, score in takenPiles]}")
                         time.sleep(3)
                         self.board_update()
                         time.sleep(5)
@@ -459,5 +460,3 @@ Game start - playGame()
     # end of game
     broadcast winner (i.e. max(find player(s) with max score))
 """
-
-
