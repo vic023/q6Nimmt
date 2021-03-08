@@ -1,5 +1,10 @@
 import random
 import string
+import time
+
+from qiskit import *
+from qiskit.quantum_info import Statevector
+from qiskit.circuit.library.standard_gates import *
 
 from q6_constants import *
 
@@ -47,8 +52,9 @@ Container for a group of cards (e.g. hand, row on board)
 """
 class Pile(object):
     # one qubit per id to modify actual score, -1 for player hand
-    def __init__(self, id=-1, list=[]):
+    def __init__(self, id=-1, qubit=0, list=[]):
         self.id = id
+        self.qubit = qubit
         self.list = list
 
     def count(self):
@@ -73,17 +79,15 @@ class Pile(object):
         except IndexError:
             return None
 
-    # remake row inplace, assumes that the card to replace the row is the last card
-    # operation of the last card is applied to previous row, so it'll be empty this row
-    def replaceRow(self, newid):
-        self.id = newid
-        self.list = [self.list[-1],]
-        self.list[0].op = ''
+    # clear the row, and obtain measured qubit
+    def replaceRow(self, result):
+        self.list = []
+        self.qubit = result
 
     # sum of score should be cards removed, only up to 5 are removed
     # while the last card always remains to form the new row
     def score(self):
-        return sum([c.score for c in self.list[:-1]])
+        return sum([c.score for c in self.list])
 
     # cards sorted for convenient viewing in players' hands
     def sort(self):
@@ -131,8 +135,11 @@ class Game(object):
     # called at the start of a new round
     # makes a deck, deals cards, and makes the 4 rows from the remaining deck
     def newRound(self):
+        self.sv = Statevector.from_label("0000")
+        self.circuit = QuantumCircuit(4)
         self.cnot_id = 0
         self.hswap_id = 0
+        self.turn = 0
         self.discards = [None for _ in range(len(self.players))]
 
         deck = self.makeDeck()
@@ -148,8 +155,6 @@ class Game(object):
             # reset mqops each round
             self.players[p].mqops = STARTING_MQOPS
         self.board = [Pile(i, list=[deck.draw(),]) for i in range(4)]
-        self.nextQubitId = 4
-        self.takenRows = [[] for _ in range(len(self.players))]
 
     # makes and shuffles a new deck of cards
     def makeDeck(self):
@@ -171,6 +176,7 @@ class Game(object):
 
     # turns indices and gates into cards to be appended to rows by server
     def prepareDiscards(self):
+        self.turn += 1
         discards = []
         for pid, (discardInd, op) in enumerate(self.discards):
             card = self.hands[pid].list[discardInd]
@@ -184,27 +190,10 @@ class Game(object):
 
     # returns a list of filled rows by index [0,3]
     def maxedRows(self):
-        return [i for i in range(len(self.board)) if self.board[i].count() == 6]
-
-    # replace rows specified by index, whilst returning the (qubit id, score)
-    def replaceRows(self, rowInds):
-        takenPiles = []
-        for ind in rowInds:
-            self.takenRows[self.board[ind].lastCard().ownerid].append((self.board[ind].id, self.board[ind].score()))
-            takenPiles.append((ind, self.board[ind].id, self.board[ind].score()))
-
-            # if qubit limit is hit, disable new rows from being made
-            if self.nextQubitId < MAX_QUBITS:
-                self.board[ind].replaceRow(self.nextQubitId)
-                self.nextQubitId += 1
-            else:
-                self.board[ind] = Pile(list=[])
-
-        # for the server to broadcast (row index, row score)
-        return takenPiles
+        return [i for i in range(len(self.board)) if self.board[i].count() >= 5]
 
     # append for multi-qubit operation, syncing the columns of the affected rows
-    def appendMQOP(self, discard, sourceRow, targetRow):
+    def appendMQOP(self, discard, controlRow, targetRow, targetRowOldLC):
 
         op = discard.op
 
@@ -215,30 +204,45 @@ class Game(object):
         discard.op = f'CX_S{self.cnot_id}' if op == 'CNot' else f'hSwap{self.hswap_id}'
 
         # LC = Last card, inherit only number of last card
-        targetRowOldLC = self.board[targetRow].lastCard()
         targetRowNewLC = Card(targetRowOldLC.number, 0, target_op, discard.ownerid)
-
-
 
         # append filler cards to the row with less cards
         fillerCard = Card(0, 0, '')
-        numOfFiller = abs(self.board[sourceRow].count() - self.board[targetRow].count())
-        if self.board[sourceRow].count() > self.board[targetRow].count():
+        numOfFiller = abs(self.board[controlRow].count() - self.board[targetRow].count())
+        if self.board[controlRow].count() > self.board[targetRow].count():
             for _ in range(numOfFiller):
                 self.board[targetRow].addCard(fillerCard)
 
-        elif self.board[sourceRow].count() < self.board[targetRow].count():
+        elif self.board[controlRow].count() < self.board[targetRow].count():
             for _ in range(numOfFiller):
-                self.board[sourceRow].addCard(fillerCard)
+                self.board[controlRow].addCard(fillerCard)
 
-        # append source and target
-        self.board[sourceRow].addCard(discard)
+        # append source and target row of cards
+        self.board[controlRow].addCard(discard)
         self.board[targetRow].addCard(targetRowNewLC)
 
+        # apply operation on quantum circuit
         if op == 'CNot':
+            self.circuit.cx(controlRow, targetRow)
             self.cnot_id += 1
         if op == 'hSwap':
+            self.circuit.cx(controlRow, targetRow)
+            self.circuit.csx(targetRow, controlRow)
+            self.circuit.cx(controlRow, targetRow)
             self.hswap_id += 1
+
+    def appendOP(self, discard, affectedRow):
+        op = discard.op
+
+        if op == 'H':
+            self.circuit.h(affectedRow)
+        elif op == 'Z':
+            self.circuit.z(affectedRow)
+        else:
+            discard.op = ''
+
+        self.board[affectedRow].addCard(discard)
+
 
 
 
@@ -266,31 +270,51 @@ class Game(object):
                 winners = [p,]
             elif winners[0].score == p.score:
                 winners.append(p)
-        return winners
+        return [w.name for w in winners]
 
-    # qbitCounts contain percentage of |1> measurements (out of 10 shots)
-    def calculateScore(self, qbitCounts):
+    # measure, calculate score from measurement, replace cards of row measured
+    def measureRow(self, rowInd, ownerid):
+
+        # time operations
+        startTime = time.time()
+        # apply queued list of operations
+        self.sv = self.sv.evolve(self.circuit)
+        print(f"Application of quantum operations finished in {time.time() - startTime} seconds.")
+        # clear the queue of quantum operations
+        self.circuit = QuantumCircuit(4)
+        startTime = time.time()
+
+        # measure the system
+        result, self.sv = self.sv.measure([rowInd])
+        print(f"Measurement finished in {time.time() - startTime} seconds.")
+        self.calculateScore(rowInd, result, ownerid)
+        self.board[rowInd].replaceRow(result)
+
+        return float(result)
+
+
+    # substract score based on measurement of qubit and the person who measured
+    def calculateScore(self, rowInd, qbitMeas, ownerid):
 
         num_OtherPlayers = len(self.players) - 1
 
+        # don't divide by zero
         num_OtherPlayers = num_OtherPlayers if num_OtherPlayers > 0 else 1
 
+        # how the points rae split between the rest of the players
         dampeningFactor = 1.0 / num_OtherPlayers
 
-        for pid, playerRows in enumerate(self.takenRows):
-            for qubitId, score in playerRows:
+        # measurement is numpy string, change it to float
+        qbitMeas = float(qbitMeas)
 
-                # penalize player for |0> measurement
-                self.players[pid].score -= (1 - qbitCounts[qubitId]) * score
+        # penalize player for |0> measurement
+        self.players[ownerid].score -= (1 - qbitMeas) * self.board[rowInd].score()
 
-                # subtract from other players for |1> measurement, with penalty
-                # divided by the number of other players
-                for otherPlayer in self.players[:pid] + self.players[pid+1:]:
-                    otherPlayer.score -= qbitCounts[qubitId] * score * dampeningFactor
+        # subtract from other players for |1> measurement, with penalty
+        # divided by the number of other players
+        for otherPlayer in self.players[:ownerid] + self.players[ownerid+1:]:
+            otherPlayer.score -= qbitMeas * self.board[rowInd].score() * dampeningFactor
 
-    # keep track of the number of rows taken, qasm_simulator has 29 qubit limit
-    def rowsRemaining(self):
-        return len([row for row in self.board if row.id > -1])
 
 # helper functions that turn dictionaries into python game objects
 def unpackCard(card):
@@ -337,7 +361,7 @@ def randomRows():
         for c in range(numofCards):
             card = randomCard()
             row.append(card)
-        rows.append(Pile(random.randint(0,104), row))
+        rows.append(Pile(random.randint(0,104), list=row))
     return rows
 
 def randomHand(numofCards = 6):

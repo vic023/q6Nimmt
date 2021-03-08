@@ -114,80 +114,82 @@ class GameViewClient:
     def recvGameState(self):
         while True:
 
-            if bool(self.conn):
+            try:
+                if bool(self.conn):
 
-                # game state updates (in JSON)
-                message = json.loads(self.conn.recv(2048))
+                    # game state updates (in JSON)
+                    message = json.loads(self.conn.recv(2048))
 
-                # everyone has sent their discard, server should send the
-                # last recorded discard (by index) of each player as a response
-                # so that the client removes that selection from the display
-                if TURN_START in message:
-                    self.confirmButton.config(state="normal")
+                    # everyone has sent their discard, server should send the
+                    # last recorded discard (by index) of each player as a response
+                    # so that the client removes that selection from the display
+                    if TURN_START in message:
+                        self.confirmButton.config(state="normal")
 
-                elif TURN_IP in message:
-                    self.confirmButton.config(state="disabled")
-                    discardInd = message[TURN_IP]
-                    self.hand.discardUpdate(discardInd)
+                    elif TURN_IP in message:
+                        self.confirmButton.config(state="disabled")
+                        discardInd = message[TURN_IP]
+                        self.hand.discardUpdate(discardInd)
 
-                # prompt selection here for too low of a discard
-                elif LOW_CARD in message:
-                    self.board.enableKets()
+                    # prompt selection here for too low of a discard
+                    elif LOW_CARD in message:
+                        self.board.enableKets()
 
-                # the next turn, update the scoreboard
-                elif TURN_END in message:
-                    players = unpackPlayers(message[TURN_END][PLAYERS])
+                    # the next turn, update the scoreboard
+                    elif TURN_END in message:
+                        players = unpackPlayers(message[TURN_END][PLAYERS])
 
-                    # disable mqops for player if they have run out
-                    if players[self.pid].mqops == 0:
-                        self.ops.disableMqops()
-                        self.ops.selectedOp.set('')
+                        # disable mqops for player if they have run out
+                        if players[self.pid].mqops == 0:
+                            self.ops.disableMqops()
+                            self.ops.selectedOp.set('')
 
-                    # update scoreboard
-                    self.scoreboard.updatePlayerInfo(players, self.pid)
+                        # update scoreboard
+                        self.scoreboard.updatePlayerInfo(players, self.pid)
 
-                    # clear discards
-                    self.discardPile.clearDiscards()
+                        # clear discards
+                        self.discardPile.clearDiscards()
 
-                elif DISCARDS in message:
-                    # discards will be a list of cards in json form
-                    # change them into card objects
-                    discards = message[DISCARDS]
-                    discards = [unpackCard(discard) for discard in discards]
-                    self.discardPile.displayDiscards(discards, self.pNames)
+                    elif DISCARDS in message:
+                        # discards will be a list of cards in json form
+                        # change them into card objects
+                        discards = message[DISCARDS]
+                        discards = [unpackCard(discard) for discard in discards]
+                        self.discardPile.displayDiscards(discards, self.pNames)
 
-                elif MQOP_PROMPT in message:
-                    # message contains the source index
-                    self.board.enableTargetKets(message[MQOP_PROMPT])
+                    elif MQOP_PROMPT in message:
+                        # message contains the source index
+                        self.board.enableTargetKets(message[MQOP_PROMPT])
 
-                # highlight the next discard to be processed within the queue
-                elif HIGHLIGHT_NEXT in message:
-                    self.discardPile.highlightNextDiscard()
+                    # highlight the next discard to be processed within the queue
+                    elif HIGHLIGHT_NEXT in message:
+                        self.discardPile.highlightNextDiscard()
 
-                elif BOARD in message:
-                    board = unpackBoard(message[BOARD])
-                    self.board.updateBoard(board)
+                    elif BOARD in message:
+                        board = unpackBoard(message[BOARD])
+                        self.board.updateBoard(board)
 
-                elif LOG in message:
-                    self.log.display(message[LOG])
+                    elif LOG in message:
+                        self.log.display(message[LOG])
 
-                elif NEXT_ROUND in message:
-                    gamestate = message[NEXT_ROUND]
-                    board, players, hand, pid = unpackGamestate(gamestate)
-                    if players[pid].mqops > 0:
-                        self.ops.enableMqops()
-                    self.pid = pid
-                    self.board.updateBoard(board)
-                    self.scoreboard.updatePlayerInfo(players, self.pid)
-                    self.hand.displayNewHand(hand)
-                    self.confirmButton.config(state="normal")
+                    elif NEXT_ROUND in message:
+                        gamestate = message[NEXT_ROUND]
+                        board, players, hand, pid = unpackGamestate(gamestate)
+                        if players[pid].mqops > 0:
+                            self.ops.enableMqops()
+                        self.pid = pid
+                        self.board.updateBoard(board)
+                        self.scoreboard.updatePlayerInfo(players, self.pid)
+                        self.hand.displayNewHand(hand)
+                        self.confirmButton.config(state="normal")
 
-                elif PLAYERS in message:
-                    self.scoreboard.updatePlayerInfo(unpackPlayers(message[PLAYERS]), self.pid)
+                    elif PLAYERS in message:
+                        self.scoreboard.updatePlayerInfo(unpackPlayers(message[PLAYERS]), self.pid)
 
-                elif GAME_OVER in message:
-                    break
-
+                    elif GAME_OVER in message:
+                        break
+            except:
+                pass
 
         self.destroy()
 

@@ -8,6 +8,7 @@ from game_objs import *
 from q6_constants import *# defined headers for q6nimmt network packets
 
 from qiskit import *
+from qiskit.quantum_info import Statevector
 from qiskit.circuit.library.standard_gates import *
 
 
@@ -163,12 +164,7 @@ class Server:
     # 2 major parts, game state and circuit
     def playGame(self):
         round = 0
-        simulator = Aer.get_backend('qasm_simulator')
         while not self.gameEnded:
-
-            # initialize new circuit
-            circuit = QuantumCircuit(MAX_QUBITS)
-
 
             # round 0 already initializes the board...
             if round != 0:
@@ -200,7 +196,6 @@ class Server:
 
                 # transform discard information to card objects, remove the card from respective hands
                 self.game.prepareDiscards()
-
                 time.sleep(3)
 
                 # broadcast list of discards to display to everyone
@@ -216,12 +211,6 @@ class Server:
                     self.broadcast(json.dumps(HIGHLIGHT_NEXT))
                     time.sleep(3)
 
-                    # remove multi-qubit operation if there is only one row left
-                    if self.game.rowsRemaining() < 2 and discard.op in ['CNot', 'hSwap']:
-                        discard.op = ''
-                        self.log_update("Only one row left, the multi-qubit operation shall be ignored.")
-                        time.sleep(3)
-
                     # try to append the card to the row
                     append_rowInd = self.game.tryDiscard(discard)
 
@@ -233,8 +222,7 @@ class Server:
 
                         # notify everyone a selection must be made by the player
                         # who discarded the card
-                        self.log_update(f"{self.playerNames[discard.ownerid]}'s discard is too low. {self.playerNames[discard.ownerid]} please select a row to take.")
-
+                        self.log_update(f"{self.playerNames[discard.ownerid]}'s discard is too low, so the quantum operation has been ignored! {self.playerNames[discard.ownerid]}, please select a row to take.")
                         time.sleep(3)
 
                         # enable row selection for the player
@@ -248,12 +236,14 @@ class Server:
 
                         selection = self.response
                         self.response = None
-                        self.log_update(f"{self.playerNames[discard.ownerid]} has taken the {self.ind_to_pos(selection)} row.")
-                        self.game.board[selection].addCard(discard)
+                        self.log_update(f"{self.playerNames[discard.ownerid]} has taken the {self.ind_to_pos(selection)} row. ")
 
                         # add to the list of piles that the player has taken
-                        takenPile = self.game.replaceRows([selection,])
+                        result = self.game.measureRows([selection,])
+                        time.sleep(3)
 
+                        self.broadcastMeasRes(result, discard.ownerid)
+                        self.game.board[selection].addCard(discard)
                         time.sleep(3)
 
                         # broadcast updated board state
@@ -280,15 +270,6 @@ class Server:
 
                         # broadcast target selection
                         self.log_update(f"The target is the {self.ind_to_pos(targetInd)} row.")
-
-                        # apply operation to circuit
-                        if discard.op == 'CX':
-                            circuit.cx(self.game.board[append_rowInd].id, self.game.board[targetInd].id)
-
-                        if discard.op == 'hSwap':
-                            circuit.cx(self.game.board[append_rowInd].id, self.game.board[targetInd].id)
-                            circuit.csx(self.game.board[targetInd].id, self.game.board[append_rowInd].id)
-                            circuit.cx(self.game.board[append_rowInd].id, self.game.board[targetInd].id)
 
                         # fill out both rows to sync columns together
                         self.game.appendMQOP(discard, append_rowInd, targetInd)
@@ -388,6 +369,12 @@ class Server:
 
     def ind_to_pos(self, index):
         return ["1st", "2nd", "3rd", "4th"][index]
+
+    def broadcastMeasRes(self, result, discardOwner):
+        if result:
+            self.log_update(f"The qubit has measured to be |1>! Points will be deducted from everyone else!")
+        else:
+            self.log_update(f"The qubit has measured to be |0>! Points will be deducted from {self.playerNames[discardOwner]}!")
 
 
 

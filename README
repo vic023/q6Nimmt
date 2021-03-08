@@ -1,12 +1,10 @@
 Main requirements: qiskit, tkinter
 The tkinter library is most likely already installed with python.
 
-Terminal command to run: python q6nimmt.py
+Terminal command to run: python q6nimmt_game_sim.py
 
-Currently only can host on localhost, so to connect to the hosted
-session, enter 127.0.0.1 for the IP. Host session does not need
-to input IP.
+This is a simulation of Quantum 6 Nimmt! The user controls all the players
+within the game simulation.
 
-Only host can start the game.
-
-The confirm button is used to send discards.
+The confirm button is used to send discards and go to the next player's view.
+Once every player's discard has been discarded, the turn proceeds as normal.

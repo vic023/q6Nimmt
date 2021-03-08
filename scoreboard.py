@@ -30,24 +30,24 @@ class Scoreboard(tk.Frame):
 
         self.playerInfos = []
 
-        # find the player and set them as the first
-        for p in players:
-            if p.id == pid:
-                toFront = p
-                break
-        players.remove(toFront)
-        players.insert(0, toFront)
-
         for i, p in enumerate(players):
             ptext = "\n".join([p.name, "Score: " + str(p.score), "Mqops: " + str(p.mqops)])
             playerInfo = tk.Label(self.scoreboard, width=10, text=ptext, relief=tk.RIDGE, justify=tk.LEFT)
 
-            if i == 0:
+            if i == pid:
                 playerInfo.config(bg='#CCCCFF')
             else:
                 playerInfo.config(bg='#CCCCCC')
 
             self.playerInfos.append(playerInfo)
+
+        # find the player and set them as the first
+        for id, pInfo in enumerate(self.playerInfos):
+            if id == pid:
+                toFront = pInfo
+                break
+        self.playerInfos.remove(toFront)
+        self.playerInfos.insert(0, toFront)
 
         for i, playerInfo in enumerate(self.playerInfos):
             playerInfo.grid(row=i, column=0)
