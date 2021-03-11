@@ -264,13 +264,8 @@ class Game(object):
 
     # find the winner(s)
     def findWinner(self):
-        winners = [self.players[0]]
-        for p in self.players[1:]:
-            if winners[0].score < p.score:
-                winners = [p,]
-            elif winners[0].score == p.score:
-                winners.append(p)
-        return [w.name for w in winners]
+        max_score = max([p.score for p in self.players])
+        return [w.name for w in self.players if w.score == max_score]
 
     # measure, calculate score from measurement, replace cards of row measured
     def measureRow(self, rowInd, ownerid):
